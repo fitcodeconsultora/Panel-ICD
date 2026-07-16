@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fitcode · Tablero de Indicadores</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="mark">FIT<span>CODE</span></div>
+    <div class="sub">Tablero de Indicadores</div>
+
+    <div class="field">
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" placeholder="tu@gimnasio.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="loginPass">Contraseña</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn" id="loginBtn" style="width:100%;">Ingresar</button>
+    <div class="error-msg" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="mark">FIT<span>CODE</span></span>
+      <span class="sub">KPI</span>
+    </div>
+
+    <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+    <button class="nav-btn" data-view="carga">Cargar datos</button>
+    <button class="nav-btn" data-view="import">Importar CSV/Excel</button>
+
+    <div class="footer">
+      <div id="userLabel" style="margin-bottom:8px;"></div>
+      <button id="logoutBtn">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ---------- DASHBOARD ---------- -->
+    <section class="panel-view active" id="view-dashboard">
+      <div class="topbar">
+        <h1>Dashboard</h1>
+        <select class="gym-select" id="gymSelect" style="display:none;"></select>
+      </div>
+
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <div class="chart-wrap">
+        <h3>Evolución mensual</h3>
+        <canvas id="chartFacturacion" height="80"></canvas>
+      </div>
+
+      <div class="chart-wrap">
+        <h3>Rentabilidad e Índice de Conversión (ICV)</h3>
+        <canvas id="chartRatios" height="80"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Detalle mensual</h2>
+        <p class="hint">Todos los indicadores calculados con las mismas fórmulas del Excel de proyección.</p>
+        <div class="table-scroll">
+          <table id="detailTable">
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th class="num">Facturación</th>
+                <th class="num">Activos</th>
+                <th class="num">Ticket Prom.</th>
+                <th class="num">% Meta</th>
+                <th class="num">ICV</th>
+                <th class="num">% Renov.</th>
+                <th class="num">Rotación</th>
+                <th class="num">Vida Media</th>
+                <th class="num">LTV</th>
+                <th class="num">Rentabilidad</th>
+                <th class="num">Utilidad</th>
+              </tr>
+            </thead>
+            <tbody id="detailTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="dashboardEmpty" style="display:none;">
+          Todavía no hay datos cargados. Andá a <strong>Cargar datos</strong> o <strong>Importar CSV/Excel</strong> para empezar.
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- CARGA MANUAL ---------- -->
+    <section class="panel-view" id="view-carga">
+      <div class="topbar"><h1>Cargar datos del mes</h1></div>
+
+      <div class="card">
+        <h2>Datos del mes</h2>
+        <p class="hint">Cargá los datos crudos del mes — los indicadores (ICV, rotación, LTV, rentabilidad, etc.) se calculan solos.</p>
+
+        <div class="form-grid">
+          <div class="field">
+            <label>Mes</label>
+            <input type="month" id="f_mes">
+          </div>
+          <div class="field">
+            <label>Facturación ($)</label>
+            <input type="number" id="f_facturacion" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Meta Facturación ($)</label>
+            <input type="number" id="f_metaFacturacion" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Clientes Activos</label>
+            <input type="number" id="f_activos" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Ventas (altas)</label>
+            <input type="number" id="f_ventas" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Visitas / Visitantes</label>
+            <input type="number" id="f_visitas" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Leads</label>
+            <input type="number" id="f_leads" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Bajas</label>
+            <input type="number" id="f_bajas" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Planes a Renovar</label>
+            <input type="number" id="f_aRenovar" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Renovados</label>
+            <input type="number" id="f_renovados" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Sueldos ($)</label>
+            <input type="number" id="f_sueldos" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Gastos operativos ($)</label>
+            <input type="number" id="f_gastos" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Impuestos ($)</label>
+            <input type="number" id="f_impuestos" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Alquiler ($)</label>
+            <input type="number" id="f_alquiler" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Inflación del mes (%)</label>
+            <input type="number" id="f_inflacion" placeholder="0" step="0.1">
+          </div>
+          <div class="field wide">
+            <label>Observaciones</label>
+            <input type="text" id="f_observaciones" placeholder="Notas del mes (opcional)">
+          </div>
+        </div>
+
+        <div style="margin-top:20px; display:flex; gap:10px;">
+          <button class="btn" id="saveMonthBtn">Guardar mes</button>
+          <button class="btn secondary" id="clearFormBtn">Limpiar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- IMPORT ---------- -->
+    <section class="panel-view" id="view-import">
+      <div class="topbar"><h1>Importar CSV / Excel</h1></div>
+
+      <div class="card">
+        <h2>Subir archivo</h2>
+        <p class="hint">
+          Una fila por mes. La primera fila debe tener estos nombres de columna:
+          <code>mes, facturacion, metaFacturacion, activos, ventas, visitas, leads, bajas,
+          aRenovar, renovados, sueldos, gastos, impuestos, alquiler, inflacion, observaciones</code>.
+          El campo <code>mes</code> en formato <code>YYYY-MM</code>.
+        </p>
+
+        <div class="upload-zone" id="uploadZone">
+          Arrastrá tu archivo acá, o hacé clic para elegirlo<br>
+          <small>.csv o .xlsx</small>
+        </div>
+        <input type="file" id="fileInput" accept=".csv,.xlsx" style="display:none;">
+
+        <div style="margin-top:16px;">
+          <button class="btn secondary" id="downloadTemplateBtn">Descargar plantilla</button>
+        </div>
+
+        <div id="importPreview" style="margin-top:20px;"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ---------- SDKs ---------- -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
