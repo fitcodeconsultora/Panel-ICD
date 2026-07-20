@@ -14,7 +14,14 @@ let state = {
   gyms: [],          // for admin: list of {id, nombre}
   currentGymId: null,
   monthlyData: [],   // raw docs for currentGymId, sorted by mes asc
-  charts: {}
+  charts: {},
+  comercial: {
+    anio: null,
+    mes: null,          // 1-12
+    diaria: {},         // { 'YYYY-MM-DD': {averiguadores, ...} }
+    mensual: null,      // { inversion, ticketProm }
+    saveTimer: null
+  }
 };
 
 // ---------------------------------------------------------
@@ -148,7 +155,7 @@ async function initForRole() {
   const gymSelectEl = document.getElementById('gymSelect');
 
   if (state.user.rol === 'admin') {
-    const snap = await db.collection('gimnasios').get();
+    const snap = await db.collection('clientes').get();
     state.gyms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     gymSelectEl.style.display = 'block';
     gymSelectEl.innerHTML = state.gyms
@@ -174,11 +181,14 @@ async function initForRole() {
 
 async function loadGymData(gymId) {
   state.currentGymId = gymId;
-  const snap = await db.collection('gimnasios').doc(gymId).collection('datosMensuales')
+  const snap = await db.collection('clientes').doc(gymId).collection('datosMensuales')
     .orderBy('mes', 'asc').get();
   const raw = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   state.monthlyData = calcKpis(raw);
   renderDashboard();
+  if (document.getElementById('view-comercial').classList.contains('active')) {
+    refreshComercial();
+  }
 }
 
 // ---------------------------------------------------------
@@ -191,6 +201,26 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.querySelectorAll('.panel-view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    if (btn.dataset.view === 'comercial' && state.currentGymId) refreshComercial();
+  });
+});
+
+document.querySelectorAll('#comercialTabs .pill-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#comercialTabs .pill-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.ctab-view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('ctab-' + btn.dataset.ctab).classList.add('active');
+    if (btn.dataset.ctab === 'dash') renderComercialDashboard();
+  });
+});
+
+document.querySelectorAll('#operacionesTabs .pill-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#operacionesTabs .pill-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.otab-view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('otab-' + btn.dataset.otab).classList.add('active');
   });
 });
 
@@ -339,7 +369,7 @@ async function saveMonth() {
   if (!state.currentGymId) { showToast('No hay gimnasio seleccionado.', true); return; }
 
   try {
-    await db.collection('gimnasios').doc(state.currentGymId)
+    await db.collection('clientes').doc(state.currentGymId)
       .collection('datosMensuales').doc(record.mes).set(record, { merge: true });
     showToast('Mes guardado correctamente.');
     clearForm();
@@ -444,7 +474,7 @@ async function confirmImport() {
   try {
     const batch = db.batch();
     pendingImportRows.forEach(r => {
-      const ref = db.collection('gimnasios').doc(state.currentGymId)
+      const ref = db.collection('clientes').doc(state.currentGymId)
         .collection('datosMensuales').doc(r.mes);
       batch.set(ref, r, { merge: true });
     });
@@ -457,6 +487,263 @@ async function confirmImport() {
   } catch (err) {
     showToast('Error al importar: ' + err.message, true);
   }
+}
+
+// ---------------------------------------------------------
+// COMERCIAL — embudo diario, resumen mensual, dashboard
+// ---------------------------------------------------------
+
+const MESES_NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const COMERCIAL_DAILY_FIELDS = ['averiguadores','averigAgendados','agendadosClase','asistenciaInvitacion','visitas','ventasVisita','ventasAveriguador'];
+
+function initComercialPeriod() {
+  const now = new Date();
+  state.comercial.anio = now.getFullYear();
+  state.comercial.mes = now.getMonth() + 1;
+
+  const mesSel = document.getElementById('com_mes');
+  mesSel.innerHTML = MESES_NOMBRES.map((n, i) => `<option value="${i + 1}">${n}</option>`).join('');
+  mesSel.value = state.comercial.mes;
+
+  const anioSel = document.getElementById('com_anio');
+  const years = [];
+  for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) years.push(y);
+  anioSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  anioSel.value = state.comercial.anio;
+
+  mesSel.addEventListener('change', () => { state.comercial.mes = parseInt(mesSel.value); refreshComercial(); });
+  anioSel.addEventListener('change', () => { state.comercial.anio = parseInt(anioSel.value); refreshComercial(); });
+}
+
+function comercialMesId() {
+  return `${state.comercial.anio}-${String(state.comercial.mes).padStart(2, '0')}`;
+}
+
+function daysInSelectedMonth() {
+  return new Date(state.comercial.anio, state.comercial.mes, 0).getDate();
+}
+
+async function refreshComercial() {
+  if (!state.currentGymId) return;
+  const mesId = comercialMesId();
+  const daysCount = daysInSelectedMonth();
+
+  // Cargar días del mes
+  const diarioSnap = await db.collection('clientes').doc(state.currentGymId)
+    .collection('comercialDiario')
+    .where(firebase.firestore.FieldPath.documentId(), '>=', `${mesId}-01`)
+    .where(firebase.firestore.FieldPath.documentId(), '<=', `${mesId}-31`)
+    .get();
+
+  state.comercial.diaria = {};
+  diarioSnap.docs.forEach(d => { state.comercial.diaria[d.id] = d.data(); });
+
+  // Cargar resumen mensual (inversión / ticket)
+  const mensualDoc = await db.collection('clientes').doc(state.currentGymId)
+    .collection('comercialMensual').doc(mesId).get();
+  state.comercial.mensual = mensualDoc.exists ? mensualDoc.data() : { inversion: 0, ticketProm: 0 };
+
+  document.getElementById('com_inversion').value = state.comercial.mensual.inversion || '';
+  document.getElementById('com_ticketProm').value = state.comercial.mensual.ticketProm || '';
+
+  renderDiariaTable(daysCount, mesId);
+  renderResumenMensual();
+
+  if (document.getElementById('ctab-dash').classList.contains('active')) {
+    renderComercialDashboard();
+  }
+}
+
+function ventasTotalesDia(d) {
+  return (d?.ventasVisita || 0) + (d?.ventasAveriguador || 0);
+}
+function efectividadDia(d) {
+  const total = ventasTotalesDia(d);
+  return d?.averiguadores ? total / d.averiguadores : null;
+}
+
+function renderDiariaTable(daysCount, mesId) {
+  document.getElementById('diariaTitle').textContent = `${MESES_NOMBRES[state.comercial.mes - 1]} ${state.comercial.anio}`;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let rows = '';
+  for (let day = 1; day <= daysCount; day++) {
+    const dateId = `${mesId}-${String(day).padStart(2, '0')}`;
+    const d = state.comercial.diaria[dateId] || {};
+    const isToday = dateId === todayStr;
+    const ventasTot = ventasTotalesDia(d);
+    const efect = efectividadDia(d);
+
+    rows += `<tr class="${isToday ? 'today-row' : ''}" data-date="${dateId}">
+      <td>${day}</td>
+      ${COMERCIAL_DAILY_FIELDS.map(f => `<td class="num"><input class="diaria-input" type="number" min="0" data-field="${f}" data-date="${dateId}" value="${d[f] != null ? d[f] : ''}"></td>`).join('')}
+      <td class="computed">${ventasTot || 0}</td>
+      <td class="computed">${efect != null ? (efect * 100).toFixed(0) + '%' : '—'}</td>
+    </tr>`;
+  }
+  document.getElementById('diariaTableBody').innerHTML = rows;
+
+  document.querySelectorAll('#diariaTableBody .diaria-input').forEach(inp => {
+    inp.addEventListener('input', onDiariaInputChange);
+  });
+}
+
+function onDiariaInputChange(e) {
+  const dateId = e.target.dataset.date;
+  const field = e.target.dataset.field;
+  const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+
+  if (!state.comercial.diaria[dateId]) state.comercial.diaria[dateId] = {};
+  state.comercial.diaria[dateId][field] = value;
+
+  // recompute the row's computed cells live
+  const row = e.target.closest('tr');
+  const d = state.comercial.diaria[dateId];
+  const ventasTot = ventasTotalesDia(d);
+  const efect = efectividadDia(d);
+  const cells = row.querySelectorAll('td.computed');
+  cells[0].textContent = ventasTot || 0;
+  cells[1].textContent = efect != null ? (efect * 100).toFixed(0) + '%' : '—';
+
+  document.getElementById('diariaSaveStatus').textContent = 'Guardando…';
+  clearTimeout(state.comercial.saveTimer);
+  state.comercial.saveTimer = setTimeout(() => saveDiariaRow(dateId), 700);
+}
+
+async function saveDiariaRow(dateId) {
+  if (!state.currentGymId) return;
+  try {
+    await db.collection('clientes').doc(state.currentGymId)
+      .collection('comercialDiario').doc(dateId)
+      .set(state.comercial.diaria[dateId], { merge: true });
+    document.getElementById('diariaSaveStatus').textContent = 'Guardado ✓';
+  } catch (err) {
+    document.getElementById('diariaSaveStatus').textContent = 'Error al guardar';
+    showToast('Error al guardar día: ' + err.message, true);
+  }
+}
+
+function comercialTotalesMes() {
+  const totals = { averiguadores: 0, averigAgendados: 0, agendadosClase: 0, asistenciaInvitacion: 0, visitas: 0, ventasVisita: 0, ventasAveriguador: 0 };
+  Object.values(state.comercial.diaria).forEach(d => {
+    COMERCIAL_DAILY_FIELDS.forEach(f => { totals[f] += d[f] || 0; });
+  });
+  totals.ventasTotales = totals.ventasVisita + totals.ventasAveriguador;
+  totals.agendados = totals.averigAgendados + totals.agendadosClase;
+  totals.asistieron = totals.asistenciaInvitacion;
+  totals.efectividad = totals.averiguadores ? totals.ventasTotales / totals.averiguadores : null;
+  return totals;
+}
+
+document.getElementById('saveComercialMensualBtn').addEventListener('click', saveComercialMensual);
+
+async function saveComercialMensual() {
+  if (!state.currentGymId) { showToast('No hay gimnasio seleccionado.', true); return; }
+  const inversion = parseFloat(document.getElementById('com_inversion').value) || 0;
+  const ticketProm = parseFloat(document.getElementById('com_ticketProm').value) || 0;
+  state.comercial.mensual = { inversion, ticketProm };
+
+  try {
+    await db.collection('clientes').doc(state.currentGymId)
+      .collection('comercialMensual').doc(comercialMesId())
+      .set({ inversion, ticketProm }, { merge: true });
+    showToast('Resumen mensual guardado.');
+    renderResumenMensual();
+  } catch (err) {
+    showToast('Error al guardar: ' + err.message, true);
+  }
+}
+
+function renderResumenMensual() {
+  const totals = comercialTotalesMes();
+  const { inversion = 0, ticketProm = 0 } = state.comercial.mensual || {};
+
+  const costoLead = totals.averiguadores ? inversion / totals.averiguadores : null;
+  const cac = totals.ventasTotales ? inversion / totals.ventasTotales : null;
+  const facturacionEstimada = totals.ventasTotales * ticketProm;
+  const roi = inversion ? (facturacionEstimada - inversion) / inversion : null;
+
+  document.getElementById('m_costoLead').textContent = fmtMoney(costoLead);
+  document.getElementById('m_cac').textContent = fmtMoney(cac);
+  document.getElementById('m_facturacionEstimada').textContent = fmtMoney(facturacionEstimada);
+  document.getElementById('m_roi').textContent = roi != null ? fmtPct(roi) : '—';
+
+  renderFunnelChart(totals);
+}
+
+function renderFunnelChart(totals) {
+  if (state.charts.funnel) state.charts.funnel.destroy();
+  const ctx = document.getElementById('chartFunnelMes').getContext('2d');
+  const labels = ['Averiguadores', 'Agendados', 'Asistieron', 'Visitas', 'Ventas'];
+  const data = [totals.averiguadores, totals.agendados, totals.asistieron, totals.visitas, totals.ventasTotales];
+
+  state.charts.funnel = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: '#E4602E', borderRadius: 4 }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true } }
+    }
+  });
+}
+
+function renderComercialDashboard() {
+  const totals = comercialTotalesMes();
+  const { inversion = 0, ticketProm = 0 } = state.comercial.mensual || {};
+  const cac = totals.ventasTotales ? inversion / totals.ventasTotales : null;
+  const facturacionEstimada = totals.ventasTotales * ticketProm;
+  const roi = inversion ? (facturacionEstimada - inversion) / inversion : null;
+
+  const cards = [
+    { label: 'Averiguadores (mes)', value: totals.averiguadores || 0, headline: true },
+    { label: 'Ventas Totales', value: totals.ventasTotales || 0 },
+    { label: 'Efectividad', value: totals.efectividad != null ? fmtPct(totals.efectividad) : '—' },
+    { label: 'CAC', value: fmtMoney(cac) },
+    { label: 'ROI del mes', value: roi != null ? fmtPct(roi) : '—' },
+  ];
+
+  document.getElementById('comercialKpiGrid').innerHTML = cards.map(c => `
+    <div class="kpi-card ${c.headline ? 'headline' : ''}">
+      <div class="label"><span>${c.label}</span></div>
+      <div class="kpi-value">${c.value}</div>
+    </div>
+  `).join('');
+
+  const daysCount = daysInSelectedMonth();
+  const mesId = comercialMesId();
+  const labels = [];
+  const ventasSerie = [];
+  const efectSerie = [];
+  for (let day = 1; day <= daysCount; day++) {
+    const dateId = `${mesId}-${String(day).padStart(2, '0')}`;
+    const d = state.comercial.diaria[dateId] || {};
+    labels.push(day);
+    ventasSerie.push(ventasTotalesDia(d));
+    const e = efectividadDia(d);
+    efectSerie.push(e != null ? e * 100 : null);
+  }
+
+  if (state.charts.comercialEvo) state.charts.comercialEvo.destroy();
+  const ctx = document.getElementById('chartComercialEvolucion').getContext('2d');
+  state.charts.comercialEvo = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Ventas totales', data: ventasSerie, backgroundColor: '#E4602E', yAxisID: 'y' },
+        { type: 'line', label: 'Efectividad %', data: efectSerie, borderColor: '#16161A', tension: .3, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        y: { beginAtZero: true, position: 'left' },
+        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%' } }
+      }
+    }
+  });
 }
 
 document.getElementById('downloadTemplateBtn').addEventListener('click', () => {
@@ -483,3 +770,5 @@ function showToast(msg, isError = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
 }
+
+initComercialPeriod();
