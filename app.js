@@ -77,9 +77,9 @@ function statusFor(kpiKey, value) {
     case 'pctMeta':
       return value >= 1 ? 'good' : value >= 0.85 ? 'warn' : 'bad';
     case 'icv':
-      return value >= 0.3 ? 'good' : value >= 0.15 ? 'warn' : 'bad';
+      return value >= 0.65 ? 'good' : value >= 0.4 ? 'warn' : 'bad';
     case 'pctRenovacion':
-      return value >= 0.75 ? 'good' : value >= 0.6 ? 'warn' : 'bad';
+      return value >= 0.85 ? 'good' : value >= 0.6 ? 'warn' : 'bad';
     case 'rotacion':
       return value <= 0.05 ? 'good' : value <= 0.08 ? 'warn' : 'bad';
     case 'rentabilidad':
@@ -358,29 +358,59 @@ function setupDashMonthSelect(data) {
 
   sel.onchange = () => {
     const record = data.find(r => r.mes === sel.value);
-    if (record) renderKpiCards(record);
+    if (record) renderKpiCards(record, data);
   };
 
-  renderKpiCards(data.find(r => r.mes === sel.value) || sorted[0]);
+  renderKpiCards(data.find(r => r.mes === sel.value) || sorted[0], data);
 }
 
-function renderKpiCards(record) {
+function calcDelta(curr, prev, type) {
+  if (curr == null || prev == null || isNaN(curr) || isNaN(prev)) return null;
+  if (type === 'money') {
+    if (!prev) return null;
+    return (curr - prev) / prev;
+  }
+  return curr - prev; // 'pp' (puntos porcentuales) o 'num'
+}
+
+function fmtDelta(delta, type) {
+  if (delta == null || isNaN(delta)) return null;
+  const sign = delta > 0 ? '+' : '';
+  if (type === 'money') return sign + (delta * 100).toFixed(1) + '%';
+  if (type === 'pp') return sign + (delta * 100).toFixed(1) + ' pts';
+  return sign + delta.toFixed(1);
+}
+
+function renderKpiCards(record, data) {
+  const idx = data.findIndex(r => r.mes === record.mes);
+  const prev = idx > 0 ? data[idx - 1] : null;
+
   const cards = [
-    { key: 'facturacion', label: 'Facturación', value: fmtMoney(record.facturacion), headline: true },
-    { key: 'pctMeta', label: '% Meta', value: fmtPct(record.pctMeta), status: statusFor('pctMeta', record.pctMeta) },
-    { key: 'icv', label: 'ICV', value: fmtPct(record.icv), status: statusFor('icv', record.icv) },
-    { key: 'pctRenovacion', label: '% Renovación', value: fmtPct(record.pctRenovacion), status: statusFor('pctRenovacion', record.pctRenovacion) },
-    { key: 'rotacion', label: 'Rotación', value: fmtPct(record.rotacion), status: statusFor('rotacion', record.rotacion) },
-    { key: 'vidaMedia', label: 'Vida Media', value: fmtNum(record.vidaMedia), sub: 'meses' },
-    { key: 'ltv', label: 'LTV', value: fmtMoney(record.ltv) },
-    { key: 'rentabilidad', label: 'Rentabilidad', value: fmtPct(record.rentabilidad), status: statusFor('rentabilidad', record.rentabilidad) },
-    { key: 'utilidad', label: 'Utilidad', value: fmtMoney(record.utilidad) },
-    { key: 'ticketPromedio', label: 'Ticket Promedio', value: fmtMoney(record.ticketPromedio) },
+    { key: 'facturacion', label: 'Facturación', value: fmtMoney(record.facturacion), headline: true, deltaType: 'money', curr: record.facturacion, prevVal: prev?.facturacion },
+    { key: 'pctMeta', label: '% Meta', value: fmtPct(record.pctMeta), status: statusFor('pctMeta', record.pctMeta), deltaType: 'pp', curr: record.pctMeta, prevVal: prev?.pctMeta, betterWhen: 'up' },
+    { key: 'icv', label: 'ICV', value: fmtPct(record.icv), status: statusFor('icv', record.icv), deltaType: 'pp', curr: record.icv, prevVal: prev?.icv, betterWhen: 'up' },
+    { key: 'pctRenovacion', label: '% Renovación', value: fmtPct(record.pctRenovacion), status: statusFor('pctRenovacion', record.pctRenovacion), deltaType: 'pp', curr: record.pctRenovacion, prevVal: prev?.pctRenovacion, betterWhen: 'up' },
+    { key: 'rotacion', label: 'Rotación', value: fmtPct(record.rotacion), status: statusFor('rotacion', record.rotacion), deltaType: 'pp', curr: record.rotacion, prevVal: prev?.rotacion, betterWhen: 'down' },
+    { key: 'vidaMedia', label: 'Vida Media', value: fmtNum(record.vidaMedia), sub: 'meses', deltaType: 'num', curr: record.vidaMedia, prevVal: prev?.vidaMedia, betterWhen: 'up' },
+    { key: 'ltv', label: 'LTV', value: fmtMoney(record.ltv), deltaType: 'money', curr: record.ltv, prevVal: prev?.ltv, betterWhen: 'up' },
+    { key: 'rentabilidad', label: 'Rentabilidad', value: fmtPct(record.rentabilidad), status: statusFor('rentabilidad', record.rentabilidad), deltaType: 'pp', curr: record.rentabilidad, prevVal: prev?.rentabilidad, betterWhen: 'up' },
+    { key: 'utilidad', label: 'Utilidad', value: fmtMoney(record.utilidad), deltaType: 'money', curr: record.utilidad, prevVal: prev?.utilidad, betterWhen: 'up' },
+    { key: 'ticketPromedio', label: 'Ticket Promedio', value: fmtMoney(record.ticketPromedio), deltaType: 'money', curr: record.ticketPromedio, prevVal: prev?.ticketPromedio, betterWhen: 'up' },
   ];
 
   const statusText = { good: 'Bien', warn: 'Alerta', bad: 'Riesgo' };
 
-  document.getElementById('kpiGrid').innerHTML = cards.map(c => `
+  document.getElementById('kpiGrid').innerHTML = cards.map(c => {
+    const delta = calcDelta(c.curr, c.prevVal, c.deltaType);
+    const deltaStr = fmtDelta(delta, c.deltaType);
+    let deltaClass = 'neutral';
+    if (delta != null && delta !== 0) {
+      const improved = c.betterWhen === 'down' ? delta < 0 : delta > 0;
+      deltaClass = improved ? 'up' : 'down';
+    }
+    const arrow = delta == null ? '' : delta > 0 ? '▲ ' : delta < 0 ? '▼ ' : '';
+
+    return `
     <div class="kpi-card ${c.status ? 'status-' + c.status : ''} ${c.headline ? 'headline' : ''}">
       <div class="label">
         <span>${c.label}</span>
@@ -388,8 +418,9 @@ function renderKpiCards(record) {
       </div>
       <div class="kpi-value">${c.value}</div>
       ${c.sub ? `<div class="kpi-sub">${c.sub}</div>` : ''}
-    </div>
-  `).join('');
+      ${deltaStr ? `<div class="kpi-delta ${deltaClass}">${arrow}${deltaStr} vs. mes ant.</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function renderCharts(data) {

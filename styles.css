@@ -352,6 +352,17 @@ button { font-family: inherit; }
   margin-top: 6px;
 }
 
+.kpi-card .kpi-delta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  color: #8A8782;
+}
+.kpi-card .kpi-delta.up { color: var(--fc-good); }
+.kpi-card .kpi-delta.down { color: var(--fc-bad); }
+
 .badge {
   font-family: 'Inter', sans-serif;
   font-size: 9.5px;
