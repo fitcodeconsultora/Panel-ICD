@@ -50,7 +50,9 @@ const firebaseConfig = {
 ## 2. Reglas de Firestore (multi-tenant por gimnasio)
 
 En Firestore → **Reglas**, pegá esto (cada gimnasio solo lee/escribe sus propios datos; vos, como
-admin, leés todo):
+admin, leés todo). Esta versión usa una regla genérica para **cualquier subcolección** dentro de
+cada cliente (`datosMensuales`, `comercialDiario`, `comercialMensual`, y cualquier otra que sumemos
+en el futuro), así no hay que volver a tocar las reglas cada vez que agregamos una sección nueva:
 
 ```
 rules_version = '2';
@@ -62,29 +64,32 @@ service cloud.firestore {
              get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'admin';
     }
 
+    function esMismoGym(gymId) {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.gymId == gymId;
+    }
+
     match /usuarios/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       allow write: if isAdmin();
     }
 
     match /clientes/{gymId} {
-      allow read: if request.auth != null &&
-                     (isAdmin() ||
-                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.gymId == gymId);
+      allow read: if isAdmin() || esMismoGym(gymId);
       allow write: if isAdmin();
 
-      match /datosMensuales/{mesId} {
-        allow read: if request.auth != null &&
-                       (isAdmin() ||
-                        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.gymId == gymId);
-        allow write: if request.auth != null &&
-                        (isAdmin() ||
-                         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.gymId == gymId);
+      match /{coleccion}/{docId} {
+        allow read: if isAdmin() || esMismoGym(gymId);
+        allow write: if isAdmin() || esMismoGym(gymId);
       }
     }
   }
 }
 ```
+
+**⚠️ Si ya tenías las reglas viejas publicadas:** reemplazalas por estas — las anteriores solo
+cubrían `datosMensuales`, por eso `comercialDiario` y `comercialMensual` no cargaban (Firestore
+rechaza en silencio cualquier lectura/escritura que no esté explícitamente permitida).
 
 ## 3. Crear usuarios (vos y cada gimnasio)
 

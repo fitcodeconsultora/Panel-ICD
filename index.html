@@ -62,8 +62,13 @@
       </div>
 
       <div class="chart-wrap">
-        <h3>Rentabilidad e Índice de Conversión (ICV)</h3>
-        <canvas id="chartRatios" height="80"></canvas>
+        <h3>Índice de Conversión (ICV) y % Renovación</h3>
+        <canvas id="chartICV" height="80"></canvas>
+      </div>
+
+      <div class="chart-wrap">
+        <h3>Rentabilidad</h3>
+        <canvas id="chartRentabilidad" height="80"></canvas>
       </div>
 
       <div class="card">
@@ -88,10 +93,18 @@
               </tr>
             </thead>
             <tbody id="detailTableBody"></tbody>
+            <tfoot id="detailTableFoot"></tfoot>
           </table>
         </div>
         <div class="empty-state" id="dashboardEmpty" style="display:none;">
           Todavía no hay datos cargados en <strong>Operaciones</strong>. Andá a esa sección para empezar.
+        </div>
+
+        <div class="avg-controls" id="avgControls" style="display:none;">
+          <span class="hint" style="margin:0;">Promedio entre</span>
+          <select id="avg_desde"></select>
+          <span class="hint" style="margin:0;">y</span>
+          <select id="avg_hasta"></select>
         </div>
       </div>
     </section>
@@ -204,7 +217,11 @@
           <div class="form-grid">
             <div class="field">
               <label>Mes</label>
-              <input type="month" id="f_mes">
+              <select id="f_mesNombre"></select>
+            </div>
+            <div class="field">
+              <label>Año</label>
+              <select id="f_anio"></select>
             </div>
             <div class="field">
               <label>Facturación ($)</label>
