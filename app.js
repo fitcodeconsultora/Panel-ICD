@@ -181,13 +181,19 @@ async function initForRole() {
 
 async function loadGymData(gymId) {
   state.currentGymId = gymId;
-  const snap = await db.collection('clientes').doc(gymId).collection('datosMensuales')
-    .orderBy('mes', 'asc').get();
-  const raw = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  state.monthlyData = calcKpis(raw);
-  renderDashboard();
-  if (document.getElementById('view-comercial').classList.contains('active')) {
-    refreshComercial();
+  try {
+    const snap = await db.collection('clientes').doc(gymId).collection('datosMensuales')
+      .orderBy('mes', 'asc').get();
+    const raw = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.monthlyData = calcKpis(raw);
+    renderDashboard();
+    if (document.getElementById('view-comercial').classList.contains('active')) {
+      refreshComercial();
+    }
+  } catch (err) {
+    showToast('No se pudieron cargar los datos: ' + err.message, true);
+    state.monthlyData = [];
+    renderDashboard();
   }
 }
 
@@ -238,59 +244,23 @@ function renderDashboard() {
     tableEl.style.display = 'none';
     document.getElementById('kpiGrid').innerHTML = '';
     document.getElementById('avgControls').style.display = 'none';
+    document.getElementById('prevMonthCard').style.display = 'none';
+    document.getElementById('dashMonthBar').style.display = 'none';
+    document.getElementById('f_cargarExistente').innerHTML = '<option value="">— Nuevo mes —</option>';
     renderCharts([]);
     return;
   }
   emptyEl.style.display = 'none';
   tableEl.style.display = 'table';
 
-  const last = data[data.length - 1];
-  const cards = [
-    { key: 'facturacion', label: 'Facturación', value: fmtMoney(last.facturacion), headline: true },
-    { key: 'pctMeta', label: '% Meta', value: fmtPct(last.pctMeta), status: statusFor('pctMeta', last.pctMeta) },
-    { key: 'icv', label: 'ICV', value: fmtPct(last.icv), status: statusFor('icv', last.icv) },
-    { key: 'pctRenovacion', label: '% Renovación', value: fmtPct(last.pctRenovacion), status: statusFor('pctRenovacion', last.pctRenovacion) },
-    { key: 'rotacion', label: 'Rotación', value: fmtPct(last.rotacion), status: statusFor('rotacion', last.rotacion) },
-    { key: 'vidaMedia', label: 'Vida Media', value: fmtNum(last.vidaMedia), sub: 'meses' },
-    { key: 'ltv', label: 'LTV', value: fmtMoney(last.ltv) },
-    { key: 'rentabilidad', label: 'Rentabilidad', value: fmtPct(last.rentabilidad), status: statusFor('rentabilidad', last.rentabilidad) },
-    { key: 'utilidad', label: 'Utilidad', value: fmtMoney(last.utilidad) },
-    { key: 'ticketPromedio', label: 'Ticket Promedio', value: fmtMoney(last.ticketPromedio) },
-  ];
+  setupDashMonthSelect(data);
 
-  const statusText = { good: 'Bien', warn: 'Alerta', bad: 'Riesgo' };
-
-  document.getElementById('kpiGrid').innerHTML = cards.map(c => `
-    <div class="kpi-card ${c.status ? 'status-' + c.status : ''} ${c.headline ? 'headline' : ''}">
-      <div class="label">
-        <span>${c.label}</span>
-        ${c.status ? `<span class="badge ${c.status}">${statusText[c.status]}</span>` : ''}
-      </div>
-      <div class="kpi-value">${c.value}</div>
-      ${c.sub ? `<div class="kpi-sub">${c.sub}</div>` : ''}
-    </div>
-  `).join('');
-
-  const tbody = document.getElementById('detailTableBody');
-  tbody.innerHTML = data.slice().reverse().map(r => `
-    <tr>
-      <td>${r.mes}</td>
-      <td class="num">${fmtMoney(r.facturacion)}</td>
-      <td class="num">${r.activos ?? '—'}</td>
-      <td class="num">${fmtMoney(r.ticketPromedio)}</td>
-      <td class="num">${fmtPct(r.pctMeta)}</td>
-      <td class="num">${fmtPct(r.icv)}</td>
-      <td class="num">${fmtPct(r.pctRenovacion)}</td>
-      <td class="num">${fmtPct(r.rotacion)}</td>
-      <td class="num">${fmtNum(r.vidaMedia)}</td>
-      <td class="num">${fmtMoney(r.ltv)}</td>
-      <td class="num">${fmtPct(r.rentabilidad)}</td>
-      <td class="num">${fmtMoney(r.utilidad)}</td>
-    </tr>
-  `).join('');
+  renderDetailTableBody(data);
 
   renderCharts(data);
   setupAvgControls(data);
+  renderPrevMonthSummary();
+  renderExistingMonthsDropdown(data);
 }
 
 function setupAvgControls(data) {
@@ -327,6 +297,7 @@ function renderAverageRow(data) {
   if (lo > hi) { [lo, hi] = [hi, lo]; }
 
   const enRango = data.filter(r => r.mes >= lo && r.mes <= hi);
+  renderDetailTableBody(enRango);
   if (!enRango.length) { foot.innerHTML = ''; return; }
 
   const avg = (key) => {
@@ -351,6 +322,74 @@ function renderAverageRow(data) {
       <td class="num">${fmtMoney(avg('utilidad'))}</td>
     </tr>
   `;
+}
+
+function renderDetailTableBody(rows) {
+  const tbody = document.getElementById('detailTableBody');
+  tbody.innerHTML = rows.slice().reverse().map(r => `
+    <tr>
+      <td>${r.mes}</td>
+      <td class="num">${fmtMoney(r.facturacion)}</td>
+      <td class="num">${r.activos ?? '—'}</td>
+      <td class="num">${fmtMoney(r.ticketPromedio)}</td>
+      <td class="num">${fmtPct(r.pctMeta)}</td>
+      <td class="num">${fmtPct(r.icv)}</td>
+      <td class="num">${fmtPct(r.pctRenovacion)}</td>
+      <td class="num">${fmtPct(r.rotacion)}</td>
+      <td class="num">${fmtNum(r.vidaMedia)}</td>
+      <td class="num">${fmtMoney(r.ltv)}</td>
+      <td class="num">${fmtPct(r.rentabilidad)}</td>
+      <td class="num">${fmtMoney(r.utilidad)}</td>
+    </tr>
+  `).join('');
+}
+
+function setupDashMonthSelect(data) {
+  const bar = document.getElementById('dashMonthBar');
+  const sel = document.getElementById('dash_mesSelect');
+  bar.style.display = 'flex';
+
+  const sorted = data.slice().reverse(); // más reciente primero
+  const prevValue = sel.value;
+  sel.innerHTML = sorted.map((r, i) => `<option value="${r.mes}">${r.mes}${i === 0 ? ' (último)' : ''}</option>`).join('');
+
+  const stillExists = sorted.some(r => r.mes === prevValue);
+  sel.value = stillExists ? prevValue : sorted[0].mes;
+
+  sel.onchange = () => {
+    const record = data.find(r => r.mes === sel.value);
+    if (record) renderKpiCards(record);
+  };
+
+  renderKpiCards(data.find(r => r.mes === sel.value) || sorted[0]);
+}
+
+function renderKpiCards(record) {
+  const cards = [
+    { key: 'facturacion', label: 'Facturación', value: fmtMoney(record.facturacion), headline: true },
+    { key: 'pctMeta', label: '% Meta', value: fmtPct(record.pctMeta), status: statusFor('pctMeta', record.pctMeta) },
+    { key: 'icv', label: 'ICV', value: fmtPct(record.icv), status: statusFor('icv', record.icv) },
+    { key: 'pctRenovacion', label: '% Renovación', value: fmtPct(record.pctRenovacion), status: statusFor('pctRenovacion', record.pctRenovacion) },
+    { key: 'rotacion', label: 'Rotación', value: fmtPct(record.rotacion), status: statusFor('rotacion', record.rotacion) },
+    { key: 'vidaMedia', label: 'Vida Media', value: fmtNum(record.vidaMedia), sub: 'meses' },
+    { key: 'ltv', label: 'LTV', value: fmtMoney(record.ltv) },
+    { key: 'rentabilidad', label: 'Rentabilidad', value: fmtPct(record.rentabilidad), status: statusFor('rentabilidad', record.rentabilidad) },
+    { key: 'utilidad', label: 'Utilidad', value: fmtMoney(record.utilidad) },
+    { key: 'ticketPromedio', label: 'Ticket Promedio', value: fmtMoney(record.ticketPromedio) },
+  ];
+
+  const statusText = { good: 'Bien', warn: 'Alerta', bad: 'Riesgo' };
+
+  document.getElementById('kpiGrid').innerHTML = cards.map(c => `
+    <div class="kpi-card ${c.status ? 'status-' + c.status : ''} ${c.headline ? 'headline' : ''}">
+      <div class="label">
+        <span>${c.label}</span>
+        ${c.status ? `<span class="badge ${c.status}">${statusText[c.status]}</span>` : ''}
+      </div>
+      <div class="kpi-value">${c.value}</div>
+      ${c.sub ? `<div class="kpi-sub">${c.sub}</div>` : ''}
+    </div>
+  `).join('');
 }
 
 function renderCharts(data) {
@@ -415,16 +454,106 @@ document.getElementById('saveMonthBtn').addEventListener('click', saveMonth);
 document.getElementById('clearFormBtn').addEventListener('click', clearForm);
 
 function initFormMesAnio() {
-  const now = new Date();
   const mesSel = document.getElementById('f_mesNombre');
   mesSel.innerHTML = MESES_NOMBRES.map((n, i) => `<option value="${i + 1}">${n}</option>`).join('');
-  mesSel.value = now.getMonth() + 1;
 
   const anioSel = document.getElementById('f_anio');
+  const now = new Date();
   const years = [];
   for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) years.push(y);
   anioSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
-  anioSel.value = now.getFullYear();
+
+  resetFormMesAnioToNow();
+
+  mesSel.addEventListener('change', renderPrevMonthSummary);
+  anioSel.addEventListener('change', renderPrevMonthSummary);
+}
+
+function resetFormMesAnioToNow() {
+  const now = new Date();
+  document.getElementById('f_mesNombre').value = now.getMonth() + 1;
+  document.getElementById('f_anio').value = now.getFullYear();
+}
+
+function renderExistingMonthsDropdown(data) {
+  const sel = document.getElementById('f_cargarExistente');
+  const prevValue = sel.value;
+
+  const sorted = data.slice().reverse(); // más reciente primero
+  sel.innerHTML = '<option value="">— Nuevo mes —</option>' +
+    sorted.map(r => `<option value="${r.mes}">${r.mes}</option>`).join('');
+
+  // Mantener la selección si el mes sigue existiendo
+  if (sorted.some(r => r.mes === prevValue)) sel.value = prevValue;
+}
+
+document.getElementById('f_cargarExistente').addEventListener('change', (e) => {
+  const mes = e.target.value;
+  if (!mes) { clearForm(); resetFormMesAnioToNow(); renderPrevMonthSummary(); return; }
+
+  const record = state.monthlyData.find(r => r.mes === mes);
+  if (!record) return;
+
+  const [anio, mesNum] = mes.split('-');
+  document.getElementById('f_mesNombre').value = parseInt(mesNum);
+  document.getElementById('f_anio').value = parseInt(anio);
+
+  const setVal = (id, v) => { document.getElementById(id).value = (v ?? '') === 0 ? 0 : (v || ''); };
+  setVal('f_facturacion', record.facturacion);
+  setVal('f_metaFacturacion', record.metaFacturacion);
+  setVal('f_activos', record.activos);
+  setVal('f_ventas', record.ventas);
+  setVal('f_visitas', record.visitas);
+  setVal('f_leads', record.leads);
+  setVal('f_bajas', record.bajas);
+  setVal('f_aRenovar', record.aRenovar);
+  setVal('f_renovados', record.renovados);
+  setVal('f_sueldos', record.sueldos);
+  setVal('f_gastos', record.gastos);
+  setVal('f_impuestos', record.impuestos);
+  setVal('f_alquiler', record.alquiler);
+  setVal('f_inflacion', record.inflacion);
+  document.getElementById('f_observaciones').value = record.observaciones || '';
+
+  renderPrevMonthSummary();
+  showToast(`Editando ${mes} — los cambios reemplazan ese mes al guardar.`);
+});
+
+function renderPrevMonthSummary() {
+  const card = document.getElementById('prevMonthCard');
+  const mesNum = parseInt(document.getElementById('f_mesNombre').value);
+  const anio = parseInt(document.getElementById('f_anio').value);
+  if (!mesNum || !anio) { card.style.display = 'none'; return; }
+
+  // Calcular el mes anterior al seleccionado en el formulario
+  let prevMes = mesNum - 1;
+  let prevAnio = anio;
+  if (prevMes < 1) { prevMes = 12; prevAnio = anio - 1; }
+  const prevMesId = `${prevAnio}-${String(prevMes).padStart(2, '0')}`;
+
+  const prevData = state.monthlyData.find(r => r.mes === prevMesId);
+  if (!prevData) { card.style.display = 'none'; return; }
+
+  document.getElementById('prevMonthLabel').textContent = `${MESES_NOMBRES[prevMes - 1]} ${prevAnio}`;
+
+  const rows = [
+    { label: 'Facturación', value: fmtMoney(prevData.facturacion) },
+    { label: 'Activos', value: prevData.activos ?? '—' },
+    { label: 'Ventas', value: prevData.ventas ?? '—' },
+    { label: 'Visitas', value: prevData.visitas ?? '—' },
+    { label: 'Leads', value: prevData.leads ?? '—' },
+    { label: 'Bajas', value: prevData.bajas ?? '—' },
+    { label: 'Renovados / A renovar', value: `${prevData.renovados ?? '—'} / ${prevData.aRenovar ?? '—'}` },
+    { label: 'ICV', value: fmtPct(prevData.icv) },
+    { label: 'Rentabilidad', value: fmtPct(prevData.rentabilidad) },
+    { label: 'Utilidad', value: fmtMoney(prevData.utilidad) },
+  ];
+
+  document.getElementById('prevMonthGrid').innerHTML = rows.map(r => `
+    <div class="metric-row"><span>${r.label}</span><strong>${r.value}</strong></div>
+  `).join('');
+
+  card.style.display = 'block';
 }
 
 function readForm() {
@@ -474,6 +603,7 @@ async function saveMonth() {
 
 function clearForm() {
   document.querySelectorAll('#otab-carga input[type="number"], #otab-carga input[type="text"]').forEach(i => i.value = '');
+  document.getElementById('f_cargarExistente').value = '';
 }
 
 // ---------------------------------------------------------
@@ -660,6 +790,9 @@ function efectividadDia(d) {
   const total = ventasTotalesDia(d);
   return d?.averiguadores ? total / d.averiguadores : null;
 }
+function efectividadVisitaDia(d) {
+  return d?.visitas ? (d.ventasVisita || 0) / d.visitas : null;
+}
 
 function renderDiariaTable(daysCount, mesId) {
   document.getElementById('diariaTitle').textContent = `${MESES_NOMBRES[state.comercial.mes - 1]} ${state.comercial.anio}`;
@@ -672,12 +805,14 @@ function renderDiariaTable(daysCount, mesId) {
     const isToday = dateId === todayStr;
     const ventasTot = ventasTotalesDia(d);
     const efect = efectividadDia(d);
+    const efectVisita = efectividadVisitaDia(d);
 
     rows += `<tr class="${isToday ? 'today-row' : ''}" data-date="${dateId}">
       <td>${day}</td>
       ${COMERCIAL_DAILY_FIELDS.map(f => `<td class="num"><input class="diaria-input" type="number" min="0" data-field="${f}" data-date="${dateId}" value="${d[f] != null ? d[f] : ''}"></td>`).join('')}
       <td class="computed">${ventasTot || 0}</td>
       <td class="computed">${efect != null ? (efect * 100).toFixed(0) + '%' : '—'}</td>
+      <td class="computed">${efectVisita != null ? (efectVisita * 100).toFixed(0) + '%' : '—'}</td>
     </tr>`;
   }
   document.getElementById('diariaTableBody').innerHTML = rows;
@@ -685,6 +820,29 @@ function renderDiariaTable(daysCount, mesId) {
   document.querySelectorAll('#diariaTableBody .diaria-input').forEach(inp => {
     inp.addEventListener('input', onDiariaInputChange);
   });
+
+  renderDiariaTotalsRow();
+}
+
+function renderDiariaTotalsRow() {
+  const t = comercialTotalesMes();
+  const efectVisitaMes = t.visitas ? t.ventasVisita / t.visitas : null;
+  const foot = document.getElementById('diariaTableFoot');
+  foot.innerHTML = `
+    <tr class="avg-row">
+      <td>Total</td>
+      <td class="num">${t.averiguadores}</td>
+      <td class="num">${t.averigAgendados}</td>
+      <td class="num">${t.agendadosClase}</td>
+      <td class="num">${t.asistenciaInvitacion}</td>
+      <td class="num">${t.visitas}</td>
+      <td class="num">${t.ventasVisita}</td>
+      <td class="num">${t.ventasAveriguador}</td>
+      <td class="num">${t.ventasTotales}</td>
+      <td class="num">${t.efectividad != null ? (t.efectividad * 100).toFixed(0) + '%' : '—'}</td>
+      <td class="num">${efectVisitaMes != null ? (efectVisitaMes * 100).toFixed(0) + '%' : '—'}</td>
+    </tr>
+  `;
 }
 
 function onDiariaInputChange(e) {
@@ -700,9 +858,13 @@ function onDiariaInputChange(e) {
   const d = state.comercial.diaria[dateId];
   const ventasTot = ventasTotalesDia(d);
   const efect = efectividadDia(d);
+  const efectVisita = efectividadVisitaDia(d);
   const cells = row.querySelectorAll('td.computed');
   cells[0].textContent = ventasTot || 0;
   cells[1].textContent = efect != null ? (efect * 100).toFixed(0) + '%' : '—';
+  cells[2].textContent = efectVisita != null ? (efectVisita * 100).toFixed(0) + '%' : '—';
+
+  renderDiariaTotalsRow();
 
   document.getElementById('diariaSaveStatus').textContent = 'Guardando…';
   clearTimeout(state.comercial.saveTimer);
