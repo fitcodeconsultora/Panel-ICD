@@ -11,7 +11,7 @@
 <!-- ============ LOGIN ============ -->
 <div class="login-screen" id="loginScreen">
   <div class="login-card">
-    <div class="mark">FIT<span>CODE</span></div>
+    <div class="login-logo"><img src="logo-lockup.png" alt="Fitcode Consultora"></div>
     <div class="sub">Tablero de Indicadores</div>
 
     <div class="field">
@@ -31,8 +31,9 @@
 <div id="app">
   <aside class="sidebar">
     <div class="brand">
+      <span class="brand-icon"><img src="logo-icon.png" alt=""></span>
       <span class="mark">FIT<span>CODE</span></span>
-      <span class="sub">KPI</span>
+      <span class="sub">ICD</span>
     </div>
 
     <button class="nav-btn active" data-view="dashboard">Dashboard</button>
@@ -52,6 +53,11 @@
       <div class="topbar">
         <h1>Dashboard</h1>
         <select class="gym-select" id="gymSelect" style="display:none;"></select>
+      </div>
+
+      <div class="subnav-bar" id="dashMonthBar" style="display:none;">
+        <span class="hint" style="margin:0;">Viendo</span>
+        <select class="gym-select" id="dash_mesSelect"></select>
       </div>
 
       <div class="kpi-grid" id="kpiGrid"></div>
@@ -147,9 +153,11 @@
                   <th class="num">Ventas de averiguador</th>
                   <th class="num">Ventas totales</th>
                   <th class="num">Efect.</th>
+                  <th class="num">Efect. Visita</th>
                 </tr>
               </thead>
               <tbody id="diariaTableBody"></tbody>
+              <tfoot id="diariaTableFoot"></tfoot>
             </table>
           </div>
         </div>
@@ -210,9 +218,23 @@
 
       <!-- ---- CARGA MANUAL ---- -->
       <div class="otab-view active" id="otab-carga">
+
+        <div class="card" id="prevMonthCard" style="display:none;">
+          <h2>Mes anterior — <span id="prevMonthLabel"></span></h2>
+          <p class="hint">Referencia rápida mientras cargás el mes actual. Los datos ya guardados no se pierden — el formulario de abajo se limpia solo después de guardar, para que quede listo para el próximo mes.</p>
+          <div class="metric-row-grid" id="prevMonthGrid"></div>
+        </div>
+
         <div class="card">
           <h2>Datos del mes</h2>
           <p class="hint">Cargá los datos crudos del mes — los indicadores (ICV, rotación, LTV, rentabilidad, etc.) se calculan solos.</p>
+
+          <div class="field" style="max-width:320px; margin-bottom:20px;">
+            <label>Editar un mes ya cargado</label>
+            <select id="f_cargarExistente">
+              <option value="">— Nuevo mes —</option>
+            </select>
+          </div>
 
           <div class="form-grid">
             <div class="field">
