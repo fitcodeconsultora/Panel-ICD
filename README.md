@@ -210,9 +210,30 @@ Colecciones nuevas por gimnasio:
 
 Si alguna de estas fórmulas no coincide exactamente con la lógica de tu herramienta original, decime cuál y la ajusto — las armé interpretando las columnas de las capturas que me pasaste.
 
+## Administración (alta de gimnasios y usuarios)
 
+Ya no hace falta tocar la consola de Firebase para dar de alta gimnasios o usuarios — hay una
+sección **Administración** en el menú (solo visible para `rol: admin`) con:
 
-- Alta de gimnasios/usuarios desde la UI (por ahora, consola de Firebase).
+- **Nuevo gimnasio**: crea el documento en `clientes/{id}`. El ID se auto-sugiere a partir del
+  nombre (podés editarlo antes de crear).
+- **Nuevo usuario**: crea la cuenta de Firebase Authentication **y** su perfil en `usuarios/{uid}`
+  en un solo paso.
+- Listas de gimnasios y usuarios existentes, con opción de quitarle el acceso a un usuario (borra
+  su perfil de Firestore; la cuenta de Authentication en sí queda intacta — si querés borrarla del
+  todo, hacelo también desde Firebase → Authentication → Users).
+
+**⚠️ Limitación de seguridad a tener presente:** esta pantalla crea usuarios directamente desde el
+navegador (no hay backend propio validando el pedido). El botón "Administración" solo se muestra
+en la interfaz si tu perfil dice `admin`, pero esa es una protección de **interfaz**, no del backend
+de Firebase Authentication en sí — alguien con conocimientos técnicos y acceso al código de la app
+podría, en teoría, crear una cuenta sin pasar por esta pantalla. Para el volumen de uso actual
+(pocos usuarios de confianza) es un riesgo bajo y aceptable. Si en el futuro necesitás una barrera
+real, la solución es mover la creación de usuarios a una **Cloud Function** que verifique el rol
+del que llama antes de crear nada — lo dejamos pendiente para cuando haga falta.
+
+## Qué quedó afuera del v1 (para no sobre-construir)
+
 - Integración en vivo con APIs de otros sistemas (dijiste que hoy no está integrado — cuando
   definas qué sistema puntual vas a conectar, sumamos esa integración específica).
 - Carga diaria (Tablero ICD del Excel) — el v1 se centra en el cierre mensual. Si lo necesitás,

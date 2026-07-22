@@ -155,6 +155,7 @@ async function initForRole() {
   const gymSelectEl = document.getElementById('gymSelect');
 
   if (state.user.rol === 'admin') {
+    document.getElementById('navAdmin').style.display = 'block';
     const snap = await db.collection('clientes').get();
     state.gyms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     gymSelectEl.style.display = 'block';
@@ -208,6 +209,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
     if (btn.dataset.view === 'comercial' && state.currentGymId) refreshComercial();
+    if (btn.dataset.view === 'admin') refreshAdmin();
   });
 });
 
@@ -1061,6 +1063,145 @@ function showToast(msg, isError = false) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
+}
+
+// ---------------------------------------------------------
+// ADMINISTRACIÓN — alta de gimnasios y usuarios
+// ---------------------------------------------------------
+
+function slugify(text) {
+  return (text || '')
+    .toString()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sacar tildes
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+document.getElementById('adm_gymNombre').addEventListener('input', (e) => {
+  const idField = document.getElementById('adm_gymId');
+  if (!idField.dataset.touched) idField.value = slugify(e.target.value);
+});
+document.getElementById('adm_gymId').addEventListener('input', (e) => {
+  e.target.dataset.touched = 'true';
+});
+
+document.getElementById('adm_userRol').addEventListener('change', (e) => {
+  document.getElementById('adm_userGymField').style.display = e.target.value === 'gimnasio' ? 'block' : 'none';
+});
+
+async function refreshAdmin() {
+  // Refrescar lista de gimnasios (por si se creó uno nuevo)
+  const gymsSnap = await db.collection('clientes').get();
+  state.gyms = gymsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const gymSelectAdm = document.getElementById('adm_userGymId');
+  gymSelectAdm.innerHTML = state.gyms
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+    .map(g => `<option value="${g.id}">${g.nombre || g.id}</option>`).join('');
+
+  document.getElementById('adm_gymsTableBody').innerHTML = state.gyms
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+    .map(g => `<tr><td>${g.id}</td><td>${g.nombre || '—'}</td></tr>`).join('');
+
+  const usersSnap = await db.collection('usuarios').get();
+  const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  document.getElementById('adm_usersTableBody').innerHTML = users
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+    .map(u => `
+      <tr>
+        <td>${u.nombre || '—'}</td>
+        <td>${u.email || '—'}</td>
+        <td>${u.rol || '—'}</td>
+        <td>${u.gymId || '—'}</td>
+        <td><button class="btn secondary" style="padding:5px 10px; font-size:12px;" data-uid="${u.id}" data-nombre="${u.nombre || u.id}">Quitar acceso</button></td>
+      </tr>
+    `).join('');
+
+  document.querySelectorAll('#adm_usersTableBody button').forEach(btn => {
+    btn.addEventListener('click', () => eliminarPerfilUsuario(btn.dataset.uid, btn.dataset.nombre));
+  });
+}
+
+document.getElementById('adm_crearGymBtn').addEventListener('click', async () => {
+  const nombre = document.getElementById('adm_gymNombre').value.trim();
+  const id = document.getElementById('adm_gymId').value.trim();
+
+  if (!nombre || !id) { showToast('Completá nombre e ID.', true); return; }
+  if (!/^[a-z0-9-]+$/.test(id)) { showToast('El ID solo puede tener minúsculas, números y guiones.', true); return; }
+
+  try {
+    const existing = await db.collection('clientes').doc(id).get();
+    if (existing.exists) { showToast('Ya existe un gimnasio con ese ID.', true); return; }
+
+    await db.collection('clientes').doc(id).set({ nombre });
+    showToast(`Gimnasio "${nombre}" creado.`);
+    document.getElementById('adm_gymNombre').value = '';
+    document.getElementById('adm_gymId').value = '';
+    document.getElementById('adm_gymId').dataset.touched = '';
+    await refreshAdmin();
+  } catch (err) {
+    showToast('Error al crear gimnasio: ' + err.message, true);
+  }
+});
+
+document.getElementById('adm_crearUserBtn').addEventListener('click', async () => {
+  const nombre = document.getElementById('adm_userNombre').value.trim();
+  const email = document.getElementById('adm_userEmail').value.trim();
+  const pass = document.getElementById('adm_userPass').value;
+  const rol = document.getElementById('adm_userRol').value;
+  const gymId = document.getElementById('adm_userGymId').value;
+
+  if (!nombre || !email || !pass) { showToast('Completá nombre, email y contraseña.', true); return; }
+  if (pass.length < 6) { showToast('La contraseña debe tener al menos 6 caracteres.', true); return; }
+  if (rol === 'gimnasio' && !gymId) { showToast('Elegí un gimnasio para este usuario.', true); return; }
+
+  const btn = document.getElementById('adm_crearUserBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creando...';
+
+  // Usamos una app de Firebase secundaria para crear el usuario sin
+  // desloguear la sesión de admin actual (createUserWithEmailAndPassword
+  // inicia sesión automáticamente en la app donde se ejecuta).
+  const secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary-' + Date.now());
+  try {
+    const cred = await secondaryApp.auth().createUserWithEmailAndPassword(email, pass);
+    const uid = cred.user.uid;
+
+    const perfil = { nombre, email, rol };
+    if (rol === 'gimnasio') perfil.gymId = gymId;
+
+    await db.collection('usuarios').doc(uid).set(perfil);
+
+    showToast(`Usuario "${nombre}" creado correctamente.`);
+    document.getElementById('adm_userNombre').value = '';
+    document.getElementById('adm_userEmail').value = '';
+    document.getElementById('adm_userPass').value = '';
+    await refreshAdmin();
+  } catch (err) {
+    const msg = err.code === 'auth/email-already-in-use'
+      ? 'Ese email ya tiene una cuenta creada.'
+      : 'Error al crear usuario: ' + err.message;
+    showToast(msg, true);
+  } finally {
+    await secondaryApp.auth().signOut();
+    await secondaryApp.delete();
+    btn.disabled = false;
+    btn.textContent = 'Crear usuario';
+  }
+});
+
+async function eliminarPerfilUsuario(uid, nombre) {
+  if (!confirm(`¿Quitar el acceso de "${nombre}" a la app?\n\nEsto borra su perfil (pierde acceso inmediatamente), pero la cuenta de Authentication sigue existiendo — si querés borrarla del todo, hacelo también desde Firebase → Authentication.`)) return;
+
+  try {
+    await db.collection('usuarios').doc(uid).delete();
+    showToast(`Acceso de "${nombre}" eliminado.`);
+    await refreshAdmin();
+  } catch (err) {
+    showToast('Error al quitar acceso: ' + err.message, true);
+  }
 }
 
 initComercialPeriod();

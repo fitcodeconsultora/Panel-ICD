@@ -39,6 +39,7 @@
     <button class="nav-btn active" data-view="dashboard">Dashboard</button>
     <button class="nav-btn" data-view="comercial">Comercial</button>
     <button class="nav-btn" data-view="operaciones">Operaciones</button>
+    <button class="nav-btn" data-view="admin" id="navAdmin" style="display:none;">Administración</button>
 
     <div class="footer">
       <div id="userLabel" style="margin-bottom:8px;"></div>
@@ -336,6 +337,81 @@
           </div>
 
           <div id="importPreview" style="margin-top:20px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ADMINISTRACIÓN ================= -->
+    <section class="panel-view" id="view-admin">
+      <div class="topbar"><h1>Administración</h1></div>
+
+      <div class="two-col">
+        <div class="card">
+          <h2>Nuevo gimnasio</h2>
+          <p class="hint">Crea un cliente nuevo en el sistema.</p>
+          <div class="field">
+            <label>Nombre del gimnasio</label>
+            <input type="text" id="adm_gymNombre" placeholder="Ej: Andino CF">
+          </div>
+          <div class="field">
+            <label>ID interno (sin espacios ni tildes)</label>
+            <input type="text" id="adm_gymId" placeholder="andino-cf">
+          </div>
+          <button class="btn" id="adm_crearGymBtn">Crear gimnasio</button>
+        </div>
+
+        <div class="card">
+          <h2>Nuevo usuario</h2>
+          <p class="hint">Crea el login para vos o para un gimnasio.</p>
+          <div class="field">
+            <label>Nombre</label>
+            <input type="text" id="adm_userNombre" placeholder="Nombre y apellido">
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="adm_userEmail" placeholder="usuario@gimnasio.com">
+          </div>
+          <div class="field">
+            <label>Contraseña provisoria</label>
+            <input type="text" id="adm_userPass" placeholder="Mínimo 6 caracteres">
+          </div>
+          <div class="field">
+            <label>Rol</label>
+            <select id="adm_userRol">
+              <option value="gimnasio">Gimnasio</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="field" id="adm_userGymField">
+            <label>Gimnasio asignado</label>
+            <select id="adm_userGymId"></select>
+          </div>
+          <button class="btn" id="adm_crearUserBtn">Crear usuario</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Gimnasios existentes</h2>
+        <div class="table-scroll">
+          <table id="adm_gymsTable">
+            <thead><tr><th>ID</th><th>Nombre</th></tr></thead>
+            <tbody id="adm_gymsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Usuarios existentes</h2>
+        <p class="hint">
+          Eliminar acá saca el perfil de Firestore (pierde acceso a la app), pero la cuenta de
+          Authentication sigue existiendo — si querés borrarla del todo, hacelo también desde
+          Firebase → Authentication → Users.
+        </p>
+        <div class="table-scroll">
+          <table id="adm_usersTable">
+            <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Gimnasio</th><th></th></tr></thead>
+            <tbody id="adm_usersTableBody"></tbody>
+          </table>
         </div>
       </div>
     </section>
