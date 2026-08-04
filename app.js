@@ -6,7 +6,7 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-const COLUMNS = ['mes','facturacion','metaFacturacion','activos','ventas','visitas','leads',
+const COLUMNS = ['mes','facturacion','metaFacturacion','activos','ventas','metaVentas','visitas','leads','metaLeads',
   'bajas','aRenovar','renovados','sueldos','gastos','impuestos','alquiler','inflacion','observaciones'];
 
 let state = {
@@ -43,6 +43,8 @@ function calcKpis(rows) {
     const gastosTotal = (r.sueldos || 0) + (r.gastos || 0) + (r.impuestos || 0) + (r.alquiler || 0);
     const ticketPromedio = safeDiv(r.facturacion, r.activos);
     const pctMeta = safeDiv(r.facturacion, r.metaFacturacion);
+    const pctMetaVentas = safeDiv(r.ventas, r.metaVentas);
+    const pctMetaLeads = safeDiv(r.leads, r.metaLeads);
     const icv = safeDiv(r.ventas, r.visitas);
     const pctRenovacion = safeDiv(r.renovados, r.aRenovar);
     const rotacion = safeDiv(r.bajas, prevActivos);
@@ -59,7 +61,7 @@ function calcKpis(rows) {
 
     const computed = {
       ...r,
-      gastosTotal, ticketPromedio, pctMeta, icv, pctRenovacion, rotacion, vidaMedia, ltv,
+      gastosTotal, ticketPromedio, pctMeta, pctMetaVentas, pctMetaLeads, icv, pctRenovacion, rotacion, vidaMedia, ltv,
       rentabilidad, utilidad, variacionFacturacion, sueldosPct, gastosPct, impuestosPct, alquilerPct
     };
 
@@ -75,6 +77,10 @@ function statusFor(kpiKey, value) {
   if (value == null || isNaN(value)) return '';
   switch (kpiKey) {
     case 'pctMeta':
+      return value >= 1 ? 'good' : value >= 0.85 ? 'warn' : 'bad';
+    case 'pctMetaVentas':
+      return value >= 1 ? 'good' : value >= 0.85 ? 'warn' : 'bad';
+    case 'pctMetaLeads':
       return value >= 1 ? 'good' : value >= 0.85 ? 'warn' : 'bad';
     case 'icv':
       return value >= 0.65 ? 'good' : value >= 0.4 ? 'warn' : 'bad';
@@ -390,6 +396,8 @@ function renderKpiCards(record, data) {
   const cards = [
     { key: 'facturacion', label: 'Facturación', value: fmtMoney(record.facturacion), headline: true, deltaType: 'money', curr: record.facturacion, prevVal: prev?.facturacion },
     { key: 'pctMeta', label: '% Meta', value: fmtPct(record.pctMeta), status: statusFor('pctMeta', record.pctMeta), deltaType: 'pp', curr: record.pctMeta, prevVal: prev?.pctMeta, betterWhen: 'up' },
+    { key: 'pctMetaVentas', label: '% Meta Ventas', value: fmtPct(record.pctMetaVentas), status: statusFor('pctMetaVentas', record.pctMetaVentas), deltaType: 'pp', curr: record.pctMetaVentas, prevVal: prev?.pctMetaVentas, betterWhen: 'up' },
+    { key: 'pctMetaLeads', label: '% Meta Leads', value: fmtPct(record.pctMetaLeads), status: statusFor('pctMetaLeads', record.pctMetaLeads), deltaType: 'pp', curr: record.pctMetaLeads, prevVal: prev?.pctMetaLeads, betterWhen: 'up' },
     { key: 'icv', label: 'ICV', value: fmtPct(record.icv), status: statusFor('icv', record.icv), deltaType: 'pp', curr: record.icv, prevVal: prev?.icv, betterWhen: 'up' },
     { key: 'pctRenovacion', label: '% Renovación', value: fmtPct(record.pctRenovacion), status: statusFor('pctRenovacion', record.pctRenovacion), deltaType: 'pp', curr: record.pctRenovacion, prevVal: prev?.pctRenovacion, betterWhen: 'up' },
     { key: 'rotacion', label: 'Rotación', value: fmtPct(record.rotacion), status: statusFor('rotacion', record.rotacion), deltaType: 'pp', curr: record.rotacion, prevVal: prev?.rotacion, betterWhen: 'down' },
@@ -536,8 +544,10 @@ document.getElementById('f_cargarExistente').addEventListener('change', (e) => {
   setVal('f_metaFacturacion', record.metaFacturacion);
   setVal('f_activos', record.activos);
   setVal('f_ventas', record.ventas);
+  setVal('f_metaVentas', record.metaVentas);
   setVal('f_visitas', record.visitas);
   setVal('f_leads', record.leads);
+  setVal('f_metaLeads', record.metaLeads);
   setVal('f_bajas', record.bajas);
   setVal('f_aRenovar', record.aRenovar);
   setVal('f_renovados', record.renovados);
@@ -604,8 +614,10 @@ function readForm() {
     metaFacturacion: num('f_metaFacturacion'),
     activos: num('f_activos'),
     ventas: num('f_ventas'),
+    metaVentas: num('f_metaVentas'),
     visitas: num('f_visitas'),
     leads: num('f_leads'),
+    metaLeads: num('f_metaLeads'),
     bajas: num('f_bajas'),
     aRenovar: num('f_aRenovar'),
     renovados: num('f_renovados'),
@@ -679,7 +691,8 @@ function handleFile(file) {
 let pendingImportRows = [];
 
 function previewImport(rows) {
-  const missingCols = COLUMNS.filter(c => c !== 'observaciones' && rows.length && !(c in rows[0]));
+  const optionalCols = ['observaciones', 'metaVentas', 'metaLeads'];
+  const missingCols = COLUMNS.filter(c => !optionalCols.includes(c) && rows.length && !(c in rows[0]));
   const previewEl = document.getElementById('importPreview');
 
   if (missingCols.length) {
@@ -694,8 +707,10 @@ function previewImport(rows) {
     metaFacturacion: parseFloat(r.metaFacturacion) || 0,
     activos: parseFloat(r.activos) || 0,
     ventas: parseFloat(r.ventas) || 0,
+    metaVentas: parseFloat(r.metaVentas) || 0,
     visitas: parseFloat(r.visitas) || 0,
     leads: parseFloat(r.leads) || 0,
+    metaLeads: parseFloat(r.metaLeads) || 0,
     bajas: parseFloat(r.bajas) || 0,
     aRenovar: parseFloat(r.aRenovar) || 0,
     renovados: parseFloat(r.renovados) || 0,
@@ -966,21 +981,53 @@ function renderResumenMensual() {
 }
 
 function renderFunnelChart(totals) {
-  if (state.charts.funnel) state.charts.funnel.destroy();
-  const ctx = document.getElementById('chartFunnelMes').getContext('2d');
-  const labels = ['Averiguadores', 'Agendados', 'Asistieron', 'Visitas', 'Ventas'];
-  const data = [totals.averiguadores, totals.agendados, totals.asistieron, totals.visitas, totals.ventasTotales];
+  const stages = [
+    { label: 'Averiguadores', value: totals.averiguadores },
+    { label: 'Agendados', value: totals.agendados },
+    { label: 'Asistieron', value: totals.asistieron },
+    { label: 'Visitas', value: totals.visitas },
+    { label: 'Ventas', value: totals.ventasTotales },
+  ];
 
-  state.charts.funnel = new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: '#E4602E', borderRadius: 4 }] },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true } }
+  const colors = ['#16161A', '#5A3A28', '#8C4A2A', '#BF552C', '#E4602E'];
+
+  const W = 640;
+  const segH = 64;
+  const gap = 34;
+  const maxVal = Math.max(1, ...stages.map(s => s.value || 0));
+  const minWidthFrac = 0.12; // ancho mínimo visible aunque el valor sea 0
+
+  const widthFor = (v) => {
+    const frac = Math.max(minWidthFrac, (v || 0) / maxVal);
+    return frac * W;
+  };
+
+  const totalH = stages.length * segH + (stages.length - 1) * gap;
+  let svg = `<svg viewBox="0 0 ${W} ${totalH}" width="100%" style="max-width:520px; display:block; margin:0 auto;" xmlns="http://www.w3.org/2000/svg">`;
+
+  stages.forEach((stage, i) => {
+    const y = i * (segH + gap);
+    const topW = widthFor(stage.value);
+    const nextVal = i < stages.length - 1 ? stages[i + 1].value : stage.value;
+    const bottomW = i < stages.length - 1 ? widthFor(nextVal) : topW;
+
+    const topL = (W - topW) / 2, topR = (W + topW) / 2;
+    const botL = (W - bottomW) / 2, botR = (W + bottomW) / 2;
+
+    svg += `<polygon points="${topL},${y} ${topR},${y} ${botR},${y + segH} ${botL},${y + segH}" fill="${colors[i]}" />`;
+    svg += `<text x="${W / 2}" y="${y + segH / 2 - 6}" text-anchor="middle" fill="#F5F3EF" font-family="Barlow Condensed, sans-serif" font-weight="700" font-size="17" text-transform="uppercase" letter-spacing="1">${stage.label}</text>`;
+    svg += `<text x="${W / 2}" y="${y + segH / 2 + 16}" text-anchor="middle" fill="#F5F3EF" font-family="JetBrains Mono, monospace" font-weight="600" font-size="15" opacity="0.9">${(stage.value || 0).toLocaleString('es-AR')}</text>`;
+
+    if (i < stages.length - 1) {
+      const pct = stage.value ? (nextVal / stage.value) * 100 : null;
+      const pctLabel = pct != null ? pct.toFixed(0) + '%' : '—';
+      const gy = y + segH + gap / 2;
+      svg += `<text x="${W / 2}" y="${gy + 5}" text-anchor="middle" fill="#7C7973" font-family="JetBrains Mono, monospace" font-weight="600" font-size="13">▼ ${pctLabel}</text>`;
     }
   });
+
+  svg += '</svg>';
+  document.getElementById('funnelMesContainer').innerHTML = svg;
 }
 
 function renderComercialDashboard() {
@@ -1042,7 +1089,7 @@ function renderComercialDashboard() {
 
 document.getElementById('downloadTemplateBtn').addEventListener('click', () => {
   const header = COLUMNS.join(',');
-  const example = '2026-01,1500000,1400000,380,25,90,300,15,280,230,400000,150000,80000,200000,3,"Mes de ejemplo"';
+  const example = '2026-01,1500000,1400000,380,25,30,90,300,320,15,280,230,400000,150000,80000,200000,3,"Mes de ejemplo"';
   const csv = header + '\n' + example + '\n';
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');

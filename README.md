@@ -131,14 +131,16 @@ hoja `Progreso` del Excel:
 | Campo | Descripción |
 |---|---|
 | `facturacion` | Facturación del mes |
+| `metaFacturacion` | Meta de facturación del mes |
 | `activos` | Clientes activos a fin de mes |
 | `ventas` | Ventas (altas) del mes |
+| `metaVentas` | Meta de ventas del mes |
 | `visitas` | Visitantes/visitas de venta del mes |
 | `bajas` | Bajas del mes |
 | `aRenovar` | Planes que vencían este mes |
 | `renovados` | De esos, cuántos renovaron |
 | `leads` | Leads generados |
-| `metaFacturacion` | Meta de facturación del mes |
+| `metaLeads` | Meta de leads del mes |
 | `sueldos`, `gastos`, `impuestos`, `alquiler` | Estructura de costos |
 | `inflacion` | % inflación del mes (opcional, para IPC de servicios) |
 | `observaciones` | Texto libre |
@@ -149,6 +151,8 @@ hoja `Progreso` del Excel:
 |---|---|
 | Ticket promedio | `facturacion / activos` |
 | % Meta Facturación | `facturacion / metaFacturacion` |
+| % Meta Ventas | `ventas / metaVentas` |
+| % Meta Leads | `leads / metaLeads` |
 | ICV (Índice Conversión Ventas) | `ventas / visitas` |
 | % Índice Renovación | `renovados / aRenovar` |
 | Rotación (Churn) | `bajas / activos_mes_anterior` |
@@ -174,7 +178,7 @@ La app ahora tiene 3 secciones principales en el menú lateral:
 - **Dashboard** — resumen general (mezcla indicadores de Comercial y Operaciones): facturación, ICV, % renovación, rotación, rentabilidad, etc.
 - **Comercial** — embudo de ventas, con 3 sub-vistas (igual a tu herramienta de carga diaria):
   - **Carga diaria**: una fila por día del mes, con los 7 campos del embudo (Averiguadores, Averig. agendados, Agendados a clase, Asistencia invitación, Visitas, Ventas de visita, Ventas de averiguador). Ventas totales y Efectividad se calculan solas. Guarda automático (con debounce) apenas se edita una celda.
-  - **Resumen mensual**: Inversión $ y Ticket promedio (carga manual) + métricas calculadas (Costo por lead, CAC, Facturación estimada, ROI) + gráfico de funnel del mes.
+  - **Resumen mensual**: Inversión $ y Ticket promedio (carga manual) + métricas calculadas (Costo por lead, CAC, Facturación estimada, ROI) + embudo visual del mes (Averiguadores → Agendados → Asistieron → Visitas → Ventas) con el % de conversión de cada etapa a la siguiente.
   - **Dashboard (comercial)**: KPIs del mes + evolución diaria de ventas y efectividad.
 - **Operaciones** — lo que antes era "Cargar datos" + "Importar CSV/Excel": facturación, activos, costos, rentabilidad, LTV, etc. (cierre mensual).
 
