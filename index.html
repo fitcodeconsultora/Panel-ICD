@@ -400,9 +400,14 @@
 
       <div class="card">
         <h2>Gimnasios existentes</h2>
+        <p class="hint">
+          Eliminar un gimnasio borra también todo su historial (datos mensuales de Operaciones y
+          toda la carga de Comercial). Los usuarios que tenían asignado ese gimnasio van a quedar
+          sin datos para mostrar — conviene reasignarlos o quitarles el acceso primero.
+        </p>
         <div class="table-scroll">
           <table id="adm_gymsTable">
-            <thead><tr><th>ID</th><th>Nombre</th></tr></thead>
+            <thead><tr><th>ID</th><th>Nombre</th><th></th></tr></thead>
             <tbody id="adm_gymsTableBody"></tbody>
           </table>
         </div>

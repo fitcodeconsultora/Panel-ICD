@@ -1150,7 +1150,17 @@ async function refreshAdmin() {
 
   document.getElementById('adm_gymsTableBody').innerHTML = state.gyms
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
-    .map(g => `<tr><td>${g.id}</td><td>${g.nombre || '—'}</td></tr>`).join('');
+    .map(g => `
+      <tr>
+        <td>${g.id}</td>
+        <td>${g.nombre || '—'}</td>
+        <td><button class="btn secondary" style="padding:5px 10px; font-size:12px;" data-gymid="${g.id}" data-nombre="${g.nombre || g.id}">Eliminar</button></td>
+      </tr>
+    `).join('');
+
+  document.querySelectorAll('#adm_gymsTableBody button').forEach(btn => {
+    btn.addEventListener('click', () => eliminarGimnasio(btn.dataset.gymid, btn.dataset.nombre));
+  });
 
   const usersSnap = await db.collection('usuarios').get();
   const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1248,6 +1258,49 @@ async function eliminarPerfilUsuario(uid, nombre) {
     await refreshAdmin();
   } catch (err) {
     showToast('Error al quitar acceso: ' + err.message, true);
+  }
+}
+
+async function borrarSubcoleccion(gymId, nombreColeccion) {
+  const snap = await db.collection('clientes').doc(gymId).collection(nombreColeccion).get();
+  if (snap.empty) return;
+
+  // Firestore permite hasta 500 operaciones por batch
+  const docs = snap.docs;
+  for (let i = 0; i < docs.length; i += 450) {
+    const batch = db.batch();
+    docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+
+async function eliminarGimnasio(gymId, nombre) {
+  const confirmado = confirm(
+    `¿Eliminar "${nombre}" (${gymId}) definitivamente?\n\n` +
+    `Esto borra el gimnasio y TODO su historial: los meses cargados en Operaciones y toda la ` +
+    `carga de Comercial (días y resúmenes mensuales). No se puede deshacer.\n\n` +
+    `Los usuarios que tenían este gimnasio asignado van a quedar sin datos para mostrar.`
+  );
+  if (!confirmado) return;
+
+  try {
+    showToast(`Borrando "${nombre}"... puede tardar unos segundos.`);
+    await borrarSubcoleccion(gymId, 'datosMensuales');
+    await borrarSubcoleccion(gymId, 'comercialDiario');
+    await borrarSubcoleccion(gymId, 'comercialMensual');
+    await db.collection('clientes').doc(gymId).delete();
+
+    showToast(`"${nombre}" eliminado junto con todo su historial.`);
+
+    // Si el gimnasio borrado era el que estaba seleccionado, limpiamos la vista actual
+    if (state.currentGymId === gymId) {
+      state.currentGymId = null;
+      state.monthlyData = [];
+      renderDashboard();
+    }
+    await refreshAdmin();
+  } catch (err) {
+    showToast('Error al eliminar el gimnasio: ' + err.message, true);
   }
 }
 
